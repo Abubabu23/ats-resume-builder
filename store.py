@@ -62,7 +62,9 @@ class LocalStore:
 class SupabaseStore:
     def __init__(self, url, key):
         self.base = url.rstrip('/') + '/rest/v1'
-        self.h = {'apikey': key, 'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'}
+        self.h = {'apikey': key, 'Content-Type': 'application/json'}
+        if not key.startswith('sb_'):  # legacy JWT keys also go in the Authorization header
+            self.h['Authorization'] = f'Bearer {key}'
 
     def _req(self, method, path, **kw):
         r = requests.request(method, self.base + path, headers={**self.h, **kw.pop('headers', {})}, timeout=30, **kw)
