@@ -409,7 +409,12 @@ def page_history():
 if 'user' not in ss:
     login()
 if 'prof' not in ss:
-    init_session()
+    try:
+        init_session()
+    except Exception as e:
+        st.error(f'Could not load your profile from the database. {e}')
+        st.caption('Check: tables exist in Supabase (schema.sql), SUPABASE_URL and SUPABASE_KEY in Secrets.')
+        st.stop()
 
 st.markdown(f'''<div class="hero"><div><b>📄 ATS Resume Builder</b><span>Paste a JD. Get an ATS-friendly one-page resume.</span></div>
 <div class="pill">✨ AI {used()} of {daily_limit()} today</div></div>''', unsafe_allow_html=True)

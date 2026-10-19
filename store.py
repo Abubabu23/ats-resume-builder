@@ -61,6 +61,7 @@ class LocalStore:
 
 class SupabaseStore:
     def __init__(self, url, key):
+        url, key = url.strip().strip('"\''), key.strip().strip('"\'')
         self.base = url.rstrip('/') + '/rest/v1'
         self.h = {'apikey': key, 'Content-Type': 'application/json'}
         if not key.startswith('sb_'):  # legacy JWT keys also go in the Authorization header
@@ -68,7 +69,8 @@ class SupabaseStore:
 
     def _req(self, method, path, **kw):
         r = requests.request(method, self.base + path, headers={**self.h, **kw.pop('headers', {})}, timeout=30, **kw)
-        r.raise_for_status()
+        if not r.ok:
+            raise RuntimeError(f'Supabase error {r.status_code}: {r.text[:300]}')
         return r.json() if r.content else None
 
     def load_profile(self, user):
