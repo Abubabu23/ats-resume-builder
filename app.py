@@ -100,15 +100,20 @@ def login():
         st.caption('🔒 Your email and phone are never sent to the AI.')
     if ok:
         ss.tries = ss.get('tries', 0) + 1
-        exp = users.get(u.strip())
+        exp = {k.lower(): v for k, v in users.items()}.get(u.strip().lower())
         if ss.tries > 8:
             st.error('Too many attempts. Reload the page and try again later.')
         elif exp is not None and hmac.compare_digest(str(exp).encode(), p.encode()):
-            ss.user = u.strip()
+            ss.user = u.strip().lower()
             st.rerun()
         else:
             st.error('Wrong username or password.')
     st.stop()
+
+
+def sign_out():
+    for k in list(ss):
+        del ss[k]
 
 
 def init_session():
@@ -418,7 +423,10 @@ if 'prof' not in ss:
 
 st.markdown(f'''<div class="hero"><div><b>📄 ATS Resume Builder</b><span>Paste a JD. Get an ATS-friendly one-page resume.</span></div>
 <div class="pill">✨ AI {used()} of {daily_limit()} today</div></div>''', unsafe_allow_html=True)
-page = st.segmented_control('Navigation', list(ICONS), default='Resume', key='nav', format_func=lambda x: f'{ICONS[x]} {x}', label_visibility='collapsed') or 'Resume'
+nav_col, out_col = st.columns([5, 1], vertical_alignment='center')
+with nav_col:
+    page = st.segmented_control('Navigation', list(ICONS), default='Resume', key='nav', format_func=lambda x: f'{ICONS[x]} {x}', label_visibility='collapsed') or 'Resume'
+out_col.button('Sign out', on_click=sign_out, icon=':material/logout:', width='stretch', key='signout_top')
 {'Profile': page_profile, 'JD': page_jd, 'Review': page_review, 'Resume': page_resume, 'History': page_history}[page]()
 
 snap = json.dumps(ss.prof, sort_keys=True)
@@ -430,7 +438,4 @@ if snap != ss.saved:  # autosave on any change
 with st.sidebar:
     st.caption(f'Signed in as {ss.user}')
     st.progress(min(1.0, used() / max(daily_limit(), 1)), text=f'AI today: {used()} of {daily_limit()}')
-    if st.button('Sign out'):
-        for k in list(ss):
-            del ss[k]
-        st.rerun()
+    st.button('Sign out', on_click=sign_out, key='signout_side')
