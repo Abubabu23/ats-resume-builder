@@ -34,9 +34,11 @@ def has(t, k):
 
 
 def pts(s):
+    """One bullet per line. Strips leading bullet marks and list numbering like '1.' or '2)'."""
     out = []
     for x in str(s or '').split('\n'):
-        x = re.sub(r'^[\s\-•*]+', '', x).strip()
+        x = re.sub(r'^[\s\-•*·▪●◦]+', '', x)
+        x = re.sub(r'^\(?\d{1,2}[.)]\s*(?=[A-Za-z])', '', x).strip()
         if x:
             out.append(x)
     return out

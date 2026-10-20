@@ -31,9 +31,9 @@ P_FIELDS = ['first', 'mid', 'last', 'title', 'email', 'phone', 'loc', 'linkedin'
 DATE = [('start', 'Start date'), ('end', 'End date')]
 KINDS = {
     'edu': ('Education', 'deg', [('deg', 'Level / Degree'), ('inst', 'School / College'), *DATE, ('cur', 'Currently pursuing'), ('score', 'CGPA / %'), ('loc', 'Location')]),
-    'exp': ('Experience', 'role', [('role', 'Role'), ('co', 'Company'), *DATE, ('cur', 'Currently working'), ('loc', 'Location'), ('pts', 'Bullets (one per line)')]),
-    'intern': ('Internships', 'role', [('role', 'Role'), ('co', 'Company'), *DATE, ('cur', 'Currently working'), ('loc', 'Location'), ('pts', 'Bullets (one per line)')]),
-    'proj': ('Projects', 'name', [('name', 'Project name'), ('tech', 'Tech used'), ('link', 'Link'), ('pts', 'Bullets (one per line)')]),
+    'exp': ('Experience', 'role', [('role', 'Role'), ('co', 'Company'), *DATE, ('cur', 'Currently working'), ('loc', 'Location'), ('pts', 'Bullets (one per line, no numbers needed)')]),
+    'intern': ('Internships', 'role', [('role', 'Role'), ('co', 'Company'), *DATE, ('cur', 'Currently working'), ('loc', 'Location'), ('pts', 'Bullets (one per line, no numbers needed)')]),
+    'proj': ('Projects', 'name', [('name', 'Project name'), ('tech', 'Tech used'), ('link', 'Link'), ('pts', 'Bullets (one per line, no numbers needed)')]),
     'cert': ('Certifications', 'name', [('name', 'Certification'), ('issuer', 'Issuer'), *DATE, ('cur', 'In progress')]),
 }
 SOURCES = ['LinkedIn', 'GUVI', 'Naukri', 'Indeed', 'Other']
@@ -343,12 +343,12 @@ def page_resume():
     with left:
         c1, c2 = st.columns(2)
         tp = c1.selectbox('Template', ['classic', 'modern', 'compact'], format_func=str.title)
-        safe = c2.toggle('ATS-safe layout', True)
+        safe = c2.toggle('Single-line dates (extra ATS-safe)', False)
         A = core.ats(prof, j['jd'])
         F = core.fit_one_page(core.build_model(prof, j['jd'], safe), tp)
         st.markdown(ring(A['total']) if A['kws'] else '<div class="ringbox"><div><b>ATS score</b><small>Paste a JD to see it</small></div></div>', unsafe_allow_html=True)
         st.markdown(stats([('Keywords matched', f"{len(A['matched'])} of {len(A['kws'])}"), ('Length', '1 page' if not F['over'] else 'Over 1 page'),
-                           ('Font', f"{F['z']:.1f} pt"), ('Layout', 'ATS-safe' if safe else 'Standard')]), unsafe_allow_html=True)
+                           ('Font', f"{F['z']:.1f} pt"), ('Dates', 'Single line' if safe else 'Right-aligned')]), unsafe_allow_html=True)
         name = (core.full_name(prof['p']) or 'Resume').replace(' ', '_')
         d1, d2 = st.columns(2)
         d1.download_button('⬇ Download PDF', F['pdf'], f'{name}_Resume.pdf', 'application/pdf', type='primary', width='stretch')
