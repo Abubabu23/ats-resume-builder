@@ -44,6 +44,10 @@ def limit_message(seconds=None):
     return f'The free AI limit is finished for now. Try again in {dur}, around {at}.'
 
 
+class ModelError(Exception):
+    """Provider rejected the request (unknown / retired model, bad parameter)."""
+
+
 def _post(url, **kw):
     r = requests.post(url, timeout=45, **kw)
     if r.status_code == 429:
@@ -52,8 +56,36 @@ def _post(url, **kw):
             raise AILimit(float(ra))
         except ValueError:
             raise AILimit(None)
+    if r.status_code in (400, 404):
+        raise ModelError(f'{r.status_code}: {r.text[:160]}')
     r.raise_for_status()
     return r.json()
+
+
+# Groq retired llama-3.3-70b-versatile on 2026-08-16, so we try current models in order.
+GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'openai/gpt-oss-20b']
+GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest']
+
+
+def _models(secrets, name, default):
+    given = [m.strip() for m in str(secrets.get(name, '')).split(',') if m.strip()]
+    return given or default
+
+
+def _try_models(fn, models):
+    last = None
+    for m in models:
+        try:
+            return fn(m)
+        except ModelError as e:
+            last = e
+    raise last
+
+
+def _json(text):
+    t = text.strip()
+    i, j = t.find('{'), t.rfind('}')
+    return json.loads(t[i:j + 1] if 0 <= i < j else t)
 
 
 def _groq(prompt, key, model):
@@ -75,15 +107,15 @@ def ask_json(prompt, secrets):
     """Try Groq, then Gemini. Raises AILimit if all configured providers are rate limited."""
     providers = []
     if secrets.get('GROQ_API_KEY'):
-        providers.append(lambda: _groq(prompt, secrets['GROQ_API_KEY'], secrets.get('GROQ_MODEL', 'llama-3.3-70b-versatile')))
+        providers.append(lambda: _try_models(lambda m: _groq(prompt, secrets['GROQ_API_KEY'], m), _models(secrets, 'GROQ_MODEL', GROQ_MODELS)))
     if secrets.get('GEMINI_API_KEY'):
-        providers.append(lambda: _gemini(prompt, secrets['GEMINI_API_KEY'], secrets.get('GEMINI_MODEL', 'gemini-2.5-flash')))
+        providers.append(lambda: _try_models(lambda m: _gemini(prompt, secrets['GEMINI_API_KEY'], m), _models(secrets, 'GEMINI_MODEL', GEMINI_MODELS)))
     if not providers:
         raise RuntimeError('No AI key configured. Add GROQ_API_KEY or GEMINI_API_KEY in secrets.')
     limits, last = [], None
     for call in providers:
         try:
-            return json.loads(call())
+            return _json(call())
         except AILimit as e:
             limits.append(e.seconds)
         except Exception as e:  # network / parse errors: try the next provider
