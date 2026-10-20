@@ -1,0 +1,87 @@
+{
+ "p": {
+  "first": "Abuthahir",
+  "mid": "",
+  "last": "B",
+  "title": "Data Scientist | AIML Engineer",
+  "email": "abubabu7862@gmail.com",
+  "phone": "9786310286",
+  "loc": "Erode, Tamil Nadu",
+  "linkedin": "linkedin.com/in/abuthahir-babu-8b15892a6",
+  "github": "github.com/Abubabu23",
+  "portfolio": "abubabu23.github.io",
+  "summary": "ML / GenAI fresher with hands-on experience building end-to-end ML and NLP projects: classical ML model benchmarking, recommendation systems, and a RAG-based LLM chatbot (LangChain, FAISS, Llama 3.3 via Groq), with 2 apps deployed on Streamlit Cloud. Completed B.E. Computer Science (2025) while working in AI/CV data quality and validation at Mahendra Next Wealth IT India Pvt Ltd, including 1 live production project. Certified in Data Science by IIT Madras Research Park (GUVI). Seeking a junior ML / Data Science role. Open to relocating to Pune.",
+  "skills": "Python, Machine Learning, Artificial Intelligence, SQL, Statistics & Probability, Scikit-learn, Pandas, NumPy, PyTorch, Deep Learning, LLM, RAG, Data Visualization, Power BI, Matplotlib/Seaborn, Git/GitHub, Streamlit",
+  "ach": "",
+  "pref_loc": "Open to relocating to Pune"
+ },
+ "edu": [
+  {
+   "deg": "IIT-M Advanced Programming Professional & Master Data Science",
+   "inst": "GUVI, IIT Madras Research Park",
+   "start": "2025-07",
+   "end": "2026-02",
+   "loc": "Chennai, Tamil Nadu"
+  },
+  {
+   "deg": "Bachelor in Computer Science Engineering",
+   "inst": "Annaporana Engineering College",
+   "start": "2021-06",
+   "end": "2025-05",
+   "loc": "Salem, Tamil Nadu"
+  },
+  {
+   "deg": "Diploma in mechanical engineering",
+   "inst": "Mahendra Polytechnic College",
+   "start": "2018-06",
+   "end": "2020-04",
+   "loc": "Namakal, Tamil Nadu"
+  },
+  {
+   "deg": "12th (HSC)"
+  },
+  {
+   "deg": "10th (SSLC)"
+  }
+ ],
+ "exp": [
+  {
+   "role": "Junior Team Leader - Operation",
+   "co": "MahendraNext Wealth IT India Pvt Ltd (Night Shift, concurrent with full-time education)",
+   "start": "2021-02",
+   "end": "2026-07",
+   "loc": "Namakal, Tamil Nadu",
+   "pts": "Delivered 2 successful Computer Vision POC projects and managed annotation quality for 1 live AI/CV production project, ensuring dataset accuracy for model training pipelines\nCoordinated cross-shift workflows and quality checks for ML training data annotation, supporting model accuracy and dataset readiness for AI/ML pipelines"
+  }
+ ],
+ "intern": [
+  {
+   "role": "Data Science Intern",
+   "co": "RaushByte Technologies",
+   "pts": "Cleaned and analyzed an 8,000-row sales dataset, performing exploratory data analysis and data visualization in Jupyter notebooks and Excel\nBuilt sales prediction and customer segmentation models on the cleaned dataset"
+  }
+ ],
+ "proj": [
+  {
+   "name": "Telecom AI Copilot (RAG-based Chatbot)",
+   "tech": "RAG, LangChain, FAISS, HuggingFace, DistilBERT, RoBERTa, LLM (Groq), Semantic Search",
+   "pts": "Developed a telecom AI assistant using LangChain-based RAG architecture, processing 19,995 records across policy/pricing documents for grounded customer support responses\nFine-tuned DistilBERT for intent classification and RoBERTa for sentiment analysis to route and prioritize customer queries, achieving 100% intent accuracy\nImplemented semantic retrieval using HuggingFace all-MiniLM-L6-v2 model, converting queries into 384-dimensional vector embeddings, integrated with FAISS for sub-second retrieval (<1s)\nDesigned an evaluation pipeline achieving 90%+ retrieval accuracy, generating responses using Llama 3.3 70B via Groq API\nBenchmarked cloud-hosted (Llama 3.3 70B via Groq) against self-hosted open-source models (Ollama) on response latency and quality; documented model evaluation results and architecture decisions as project knowledge base"
+  },
+  {
+   "name": "IMDb Movie Recommendation System (NLP)",
+   "tech": "Python, Selenium, NLP, TF-IDF, Cosine Similarity",
+   "pts": "Built a movie recommendation system by scraping and analyzing 300+ IMDb 2024 movies using Selenium, extracting storyline data for content-based filtering\nApplied TF-IDF vectorization and Cosine Similarity on movie storylines to recommend similar movies, achieving relevant matches for 85%+ of test queries\nDeveloped and deployed an interactive Streamlit Cloud app, returning top-5 similar movie recommendations in real-time (<2s response)"
+  },
+  {
+   "name": "Swiggy Restaurant Recommendation System",
+   "tech": "Python, Pandas, Machine Learning, Streamlit",
+   "pts": "Built a personalized restaurant recommendation system using One-Hot Encoding and K-Means/Cosine Similarity; processed 20,000 restaurant records and optimized to a top-10 city subset to balance model performance with computational efficiency\nDeployed an interactive Streamlit dashboard on Streamlit Cloud, delivering real-time recommendations in under 2 seconds\nIdentified and resolved high-dimensionality issues from One-Hot Encoding on large categorical data by strategic feature scoping, improving training speed without accuracy loss"
+  }
+ ],
+ "cert": [
+  {
+   "name": "Advanced Professional Certification in Data Science (Grade A)",
+   "issuer": "NSDC / Skill India"
+  }
+ ]
+}

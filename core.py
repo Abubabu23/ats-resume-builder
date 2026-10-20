@@ -18,7 +18,12 @@ KW = ['python', 'sql', 'machine learning', 'deep learning', 'nlp', 'computer vis
       'data structures', 'algorithms', 'oop', 'analytics', 'reporting', 'dashboard', 'kpi',
       'business intelligence', 'data modeling', 'data warehouse', 'nosql', 'neural networks', 'cnn', 'rnn',
       'lstm', 'bert', 'gpt', 'vector database', 'embeddings', 'fine-tuning', 'predictive modeling',
-      'data mining', 'cloud']
+      'data mining', 'cloud', 'snowflake', 'databricks', 'kafka', 'airflow', 'dbt', 'looker', 'bigquery', 'redshift',
+      'xgboost', 'lightgbm', 'nltk', 'spacy', 'mlflow', 'kubernetes', 'ci/cd', 'pytest', 'data pipelines',
+      'data engineering', 'natural language processing', 'recommendation systems', 'power query', 'dax',
+      'forecasting', 'anomaly detection', 'statistical modeling', 'faiss', 'pinecone', 'chroma', 'beautifulsoup',
+      'selenium', 'web scraping', 'tf-idf', 'cosine similarity', 'feature selection', 'model evaluation',
+      'cross-validation', 'hyperparameter tuning', 'ollama', 'groq']
 MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 ACTION_IRREGULAR = {'built', 'led', 'ran', 'wrote', 'made', 'drove', 'taught'}
 
@@ -130,7 +135,7 @@ def build_model(prof, jd, ats_safe=True):
 
     sec = []
     if P.get('summary'):
-        sec.append({'h': 'SUMMARY' if ats_safe else 'PROFILE', 'p': P['summary']})
+        sec.append({'h': 'SUMMARY', 'p': P['summary']})
     lines = []
     for l in pts(P.get('skills')):
         cat, _, rest = l.partition(':') if ':' in l else ('', '', l)
@@ -332,3 +337,34 @@ def fit_one_page(M, tp='classic'):
             return {'pdf': pdf, 'z': 8.4, 'trimmed': trimmed, 'over': False, 'model': C}
     pdf, _ = render_pdf(C, tp, 8.4)
     return {'pdf': pdf, 'z': 8.4, 'trimmed': trimmed, 'over': True, 'model': C}
+
+
+def parse_check(pdf_bytes, M):
+    """Re-reads the generated PDF like an ATS would. Returns (checks, extracted_text)."""
+    try:
+        import pymupdf
+    except ImportError:
+        import fitz as pymupdf
+    doc = pymupdf.open(stream=pdf_bytes, filetype='pdf')
+    text = '\n'.join(p.get_text() for p in doc)
+    up = text.upper()
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    heads = [s['h'] for s in M['sec']]
+    pos = [up.find(h) for h in heads]
+    first_head = min([p for p in pos if p >= 0], default=len(text))
+    email = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', text)
+    phone = re.search(r'(?<!\d)\+?\d[\d\s().-]{8,}\d(?!\d)', text)
+    months = len(re.findall(r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}', text))
+    checks = [
+        ('Text is selectable (not an image)', len(text.strip()) > 200, f'{len(text.split())} words read'),
+        ('One page', len(doc) == 1, f'{len(doc)} page(s)'),
+        ('Name is the first line', bool(lines) and lines[0] == M['name'], lines[0] if lines else 'nothing read'),
+        ('Email found', bool(email), email.group(0) if email else 'not found'),
+        ('Phone found', bool(phone), phone.group(0) if phone else 'not found'),
+        ('Contact appears before the first section', bool(email) and email.start() < first_head, ''),
+        ('All section headings found', all(p >= 0 for p in pos), ', '.join(h for h, p in zip(heads, pos) if p < 0) or 'all present'),
+        ('Sections are in the expected order', pos == sorted(pos), ''),
+        ('Dates are readable', months > 0 or not any(e.get('d') or e.get('s') for s in M['sec'] for e in s.get('e', [])), f'{months} dates found'),
+        ('No broken characters', '\ufffd' not in text and '\u25a0' not in text, ''),
+    ]
+    return checks, text

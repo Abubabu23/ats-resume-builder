@@ -40,6 +40,9 @@ SOURCES = ['LinkedIn', 'GUVI', 'Naukri', 'Indeed', 'Other']
 STATUSES = ['Applied', 'Interview', 'Offer', 'Rejected', 'Saved']
 BADGE = {'Applied': '🟦', 'Interview': '🟨', 'Offer': '🟩', 'Rejected': '🟥', 'Saved': '⬜'}
 IST = ai.IST
+SUGGEST = ['Python', 'SQL', 'Machine Learning', 'Deep Learning', 'NLP', 'Computer Vision', 'Pandas', 'NumPy', 'Scikit-learn', 'TensorFlow',
+           'PyTorch', 'Power BI', 'Tableau', 'Excel', 'Streamlit', 'Flask', 'FastAPI', 'Git/GitHub', 'Docker', 'AWS', 'LangChain', 'RAG',
+           'LLM', 'FAISS', 'Statistics', 'Data Visualization', 'Matplotlib/Seaborn', 'MySQL', 'PostgreSQL', 'Plotly']
 MONTHS = ['Month'] + core.MON
 YEARS = ['Year'] + [str(y) for y in range(dt.date.today().year + 6, 1989, -1)]
 ICONS = {'Profile': '👤', 'JD': '📋', 'Review': '✨', 'Resume': '📄', 'History': '🕘'}
@@ -72,7 +75,23 @@ def normalize(prof):
         out[k] = [{**blank(k), **e, 'id': e.get('id') or uuid.uuid4().hex[:8]} for e in prof.get(k, [])]
     if not out['edu']:
         out['edu'] = [blank('edu', deg=d) for d in LEVELS]
+    groups = prof.get('skill_groups')
+    if not groups:
+        groups = []
+        for line in core.pts(out['p'].get('skills', '')):
+            cat, _, rest = line.partition(':') if ':' in line else ('', '', line)
+            groups.append({'cat': cat.strip(), 'items': [x.strip() for x in rest.split(',') if x.strip()]})
+    out['skill_groups'] = [{'id': g.get('id') or uuid.uuid4().hex[:8], 'cat': g.get('cat', ''), 'items': list(g.get('items', []))} for g in groups]
+    if not out['skill_groups']:
+        out['skill_groups'] = [{'id': uuid.uuid4().hex[:8], 'cat': '', 'items': []}]
+    sync_skills(out)
     return out
+
+
+def sync_skills(prof):
+    """Keeps the text form of skills (used by scoring and PDF) in sync with the skill chips."""
+    prof['p']['skills'] = '\n'.join((f"{g['cat'].strip()}: " if g['cat'].strip() else '') + ', '.join(g['items'])
+                                   for g in prof['skill_groups'] if g['items'])
 
 
 def today():
@@ -196,6 +215,22 @@ def editor(kind):
         st.rerun()
 
 
+def skills_editor():
+    st.caption('Type a skill and press Enter to add it. Pick from the list or add your own. Group name is optional (e.g. Languages).')
+    groups = ss.prof['skill_groups']
+    for i, g in enumerate(groups):
+        with st.container(border=True):
+            g['cat'] = st.text_input('Group name (optional)', g['cat'], key=f'e_sk_{g["id"]}_cat')
+            opts = list(dict.fromkeys(g['items'] + SUGGEST))
+            g['items'] = st.multiselect('Skills', opts, g['items'], accept_new_options=True, key=f'e_sk_{g["id"]}_items')
+            if len(groups) > 1 and st.button('Remove group', key=f'rm_sk_{g["id"]}'):
+                groups.pop(i)
+                st.rerun()
+    if st.button('+ Add skill group', key='add_sk'):
+        groups.append({'id': uuid.uuid4().hex[:8], 'cat': '', 'items': []})
+        st.rerun()
+
+
 def page_profile():
     P = ss.prof['p']
     pct, miss = completeness(ss.prof)
@@ -220,9 +255,10 @@ def page_profile():
         tin(P, 'title', 'Headline', 'p_title', placeholder='Data Scientist | AIML Engineer')
         for f, lab in [('email', 'Email'), ('phone', 'Phone'), ('loc', 'Location'), ('linkedin', 'LinkedIn'), ('github', 'GitHub'), ('portfolio', 'Portfolio / Kaggle / LeetCode')]:
             tin(P, f, lab, f'p_{f}')
-    with st.expander('Summary and skills'):
-        tin(P, 'summary', 'Summary (60-80 words works best)', 'p_summary', area=True, height=140)
-        tin(P, 'skills', 'Skills: one line per category, e.g. Languages: Python, SQL', 'p_skills', area=True, height=110)
+    with st.expander('Summary'):
+        tin(P, 'summary', 'Summary (60-80 words works best)', 'p_summary', area=True, height=170)
+    st.markdown('**Skills**')
+    skills_editor()
     for k in KINDS:
         st.markdown(f'**{KINDS[k][0]}**')
         editor(k)
@@ -343,7 +379,7 @@ def page_resume():
     with left:
         c1, c2 = st.columns(2)
         tp = c1.selectbox('Template', ['classic', 'modern', 'compact'], format_func=str.title)
-        safe = c2.toggle('Single-line dates (extra ATS-safe)', False)
+        safe = c2.toggle('Single-line dates', False, help='Extra ATS-safe: date and location go on the college / company line.')
         A = core.ats(prof, j['jd'])
         F = core.fit_one_page(core.build_model(prof, j['jd'], safe), tp)
         st.markdown(ring(A['total']) if A['kws'] else '<div class="ringbox"><div><b>ATS score</b><small>Paste a JD to see it</small></div></div>', unsafe_allow_html=True)
@@ -371,6 +407,21 @@ def page_resume():
                     st.write('- ' + t)
         if F['model']['hidden']:
             st.caption('Hidden projects (less relevant to this JD): ' + ', '.join(F['model']['hidden']))
+        with st.expander('How is this score calculated?'):
+            kw_pts = round(70 * len(A['matched']) / len(A['kws'])) if A['kws'] else 0
+            st.write(f"**Keywords {kw_pts} / 70**: {len(A['matched'])} of {len(A['kws'])} JD keywords are in your resume.  \n"
+                     f"**Format {A['fmt']} / 30**: email 5, phone 5, summary 5, skills 5, education 4, experience or projects 3, profile link 3.")
+            st.caption('This is an estimate based on about 150 common skill keywords. A skill outside that list (for example a rare tool) is not counted. '
+                       'Real company ATS tools score differently, so use this to compare versions of your own resume.')
+        with st.expander('ATS parse test: what a bot reads'):
+            try:
+                checks, raw = core.parse_check(F['pdf'], F['model'])
+                for label, ok, detail in checks:
+                    st.write(('✅ ' if ok else '❌ ') + label + (f' ({detail})' if detail else ''))
+                st.caption('Text extracted from the PDF:')
+                st.code(raw, language=None)
+            except Exception as e:
+                st.caption(f'Parse test needs PyMuPDF. {e}')
         with st.expander('Quality check'):
             warns = core.quality(F['model']) + A['tips']
             for w in warns:
@@ -424,6 +475,7 @@ if 'prof' not in ss:
 st.markdown(f'''<div class="hero"><div><b>📄 ATS Resume Builder</b><span>Paste a JD. Get an ATS-friendly one-page resume.</span></div>
 <div class="pill">✨ AI {used()} of {daily_limit()} today</div></div>''', unsafe_allow_html=True)
 nav_col, out_col = st.columns([5, 1], vertical_alignment='center')
+sync_skills(ss.prof)
 with nav_col:
     page = st.segmented_control('Navigation', list(ICONS), default='Resume', key='nav', format_func=lambda x: f'{ICONS[x]} {x}', label_visibility='collapsed') or 'Resume'
 out_col.button('Sign out', on_click=sign_out, icon=':material/logout:', width='stretch', key='signout_top')

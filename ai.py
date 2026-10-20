@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from core import KW, full_text, has, norm, pts
+from core import KW, ds, full_text, has, norm, pts
 
 IST = ZoneInfo('Asia/Kolkata')
 EMAIL = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
@@ -157,15 +157,47 @@ def flags(prof, original, suggestion):
     return bad
 
 
+def facts(prof):
+    """Facts the AI may use. Contact details are never included."""
+    P = prof['p']
+    L = ['Skills: ' + mask(P.get('skills', ''))]
+    for e in prof.get('edu', []):
+        if e.get('deg') and (e.get('inst') or e.get('start') or e.get('end')):
+            L.append(f"Education: {e['deg']}, {e.get('inst', '')} ({ds(e)})")
+    for k, lab in (('exp', 'Experience'), ('intern', 'Internship')):
+        for x in prof.get(k, []):
+            if x.get('co') or x.get('role'):
+                L.append(f"{lab}: {x.get('role', '')} at {x.get('co', '')} ({ds(x)})")
+    for p in prof.get('proj', []):
+        if p.get('name'):
+            L.append(f"Project: {p['name']} ({p.get('tech', '')})")
+    for c in prof.get('cert', []):
+        if c.get('name'):
+            L.append(f"Certification: {c['name']} {c.get('issuer', '')}")
+    if P.get('pref_loc'):
+        L.append('Preference: ' + mask(P['pref_loc']))
+    return '\n'.join(L)
+
+
+SUMMARY_EXAMPLE = ("ML / GenAI fresher with hands-on experience building end-to-end ML and NLP projects, including a RAG-based "
+                   "LLM chatbot and apps deployed on Streamlit Cloud. Completed B.E. Computer Science while working in AI/CV data "
+                   "quality at a company, including a live production project. Certified in Data Science. "
+                   "Seeking a junior ML / Data Science role. Open to relocating.")
+
+
 def suggest(prof, jd, title, secrets):
     """Returns {unit_id: suggested_text}. Contact details are never included."""
     items = [{'id': u['id'], 'text': mask(u['text'])} for u in units(prof)]
     prompt = (f"You are an ATS resume editor. Job title: {title}\nJD:\n{mask(jd)}\n\n"
-              f"Candidate facts (the ONLY facts you may use):\nSkills: {mask(prof['p'].get('skills', ''))}\n"
-              f"Certifications: {'; '.join(c.get('name', '') for c in prof.get('cert', []))}\n\n"
-              "Rewrite each item to be clearer, start with an action verb, and use JD wording only for terms the candidate "
-              "already has. STRICT: never add any skill, tool, number, metric, employer or claim that is not in the original item "
-              "or the facts above. One line, under 28 words. Skip items that are already good. "
+              f"Candidate facts (the ONLY facts you may use):\n{facts(prof)}\n\n"
+              "Rewrite each item to be clearer and ATS friendly, using JD wording only for terms the candidate already has. "
+              "STRICT: never add any skill, tool, number, metric, employer, location or claim that is not in the original item "
+              "or the facts above. "
+              "For the item with id 's' (the summary) write 3 to 4 sentences, 60 to 80 words, in this order: (1) target role plus "
+              "hands-on project experience with key tools; (2) education and work experience context including the employer and "
+              "any live production work; (3) certifications; (4) the job target and, ONLY if a Preference fact exists, relocation. "
+              f"Follow the structure of this example, not its facts: \"{SUMMARY_EXAMPLE}\" "
+              "For every other item: one line, start with an action verb, under 28 words. Skip items that are already good. "
               'Return ONLY JSON: {"items":[{"id":"...","text":"..."}]}\n'
               f"Items:\n{json.dumps(items)}")
     data = ask_json(prompt, secrets)
