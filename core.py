@@ -31,6 +31,9 @@ ACTION_IRREGULAR = {'built', 'led', 'ran', 'wrote', 'made', 'drove', 'taught'}
 def norm(t):
     t = str(t).lower()
     t = re.sub(r'scikit[\s-]?learn', 'scikit-learn', t).replace('powerbi', 'power bi')
+    t = re.sub(r'fine[\s-]?tun(?:ed|es|e|ing)', 'fine-tuning', t)  # same skill, different word form
+    t = re.sub(r'\b(embedding|transformer|recommendation system|neural network|data pipeline)(?!s)\b', r'\1s', t)
+    t = re.sub(r'\bcluster(?:ed|s)\b', 'clustering', t)
     return ' ' + re.sub(r'gen\s?ai', 'genai', t) + ' '
 
 
@@ -96,9 +99,9 @@ def full_text(prof):
     return ' '.join(parts)
 
 
-def _visible_text(prof, jd):
+def _visible_text(prof, jd, summary=None):
     P = prof['p']
-    parts = [P.get('summary', ''), P.get('skills', ''), P.get('ach', '')]
+    parts = [summary if summary is not None else P.get('summary', ''), P.get('skills', ''), P.get('ach', '')]
     parts += [f"{c.get('name', '')} {c.get('issuer', '')}" for c in prof.get('cert', [])]
     for k in ('exp', 'intern'):
         parts += [f"{x.get('role', '')} {x.get('pts', '')}" for x in prof.get(k, [])]
@@ -106,14 +109,14 @@ def _visible_text(prof, jd):
     return ' '.join(parts)
 
 
-def ats(prof, jd):
+def ats(prof, jd, summary=None):
     P = prof['p']
     jk = jd_keywords(jd)
-    pn = norm(_visible_text(prof, jd))
+    pn = norm(_visible_text(prof, jd, summary))
     matched = [k for k in jk if has(pn, k)]
     missing = [k for k in jk if not has(pn, k)]
     checks = [(P.get('email'), 5, 'Add your email'), (P.get('phone'), 5, 'Add your phone'),
-              (P.get('summary'), 5, 'Write a summary'), (P.get('skills'), 5, 'Fill your skills'),
+              (summary or P.get('summary'), 5, 'Write a summary'), (P.get('skills'), 5, 'Fill your skills'),
               (any(e.get('deg') for e in prof.get('edu', [])), 4, 'Add education'),
               (any(x.get('co') or x.get('pts') for x in prof.get('exp', []) + prof.get('intern', []))
                or any(p.get('name') for p in prof.get('proj', [])), 3, 'Add experience or projects'),
@@ -124,7 +127,7 @@ def ats(prof, jd):
     return {'total': total, 'kws': jk, 'matched': matched, 'missing': missing, 'tips': tips, 'fmt': fmt}
 
 
-def build_model(prof, jd, ats_safe=True):
+def build_model(prof, jd, ats_safe=True, summary=None):
     P = prof['p']
     jk = jd_keywords(jd)
     top = top_projects(prof, jd)
@@ -134,8 +137,9 @@ def build_model(prof, jd, ats_safe=True):
         return sorted(pts(s), key=lambda b: -cnt(b, jk))[:3]
 
     sec = []
-    if P.get('summary'):
-        sec.append({'h': 'SUMMARY', 'p': P['summary']})
+    sm = summary if summary is not None else P.get('summary', '')
+    if sm:
+        sec.append({'h': 'SUMMARY', 'p': sm})
     lines = []
     for l in pts(P.get('skills')):
         cat, _, rest = l.partition(':') if ':' in l else ('', '', l)
@@ -203,8 +207,8 @@ def quality(M):
         w.append(f'Resume is about {wc} words: too long for one page.')
     if wc < 250:
         w.append(f'Resume is about {wc} words: add more projects or bullets.')
-    if len(summary.split()) > 80:
-        w.append(f'Summary is {len(summary.split())} words: keep it under 80.')
+    if len(summary.split()) > 150:
+        w.append(f'Summary is {len(summary.split())} words: keep it under 150.')
     weak = [b for b in bl if not (b.split()[0].lower().endswith('ed') or b.split()[0].lower() in ACTION_IRREGULAR)]
     if weak:
         w.append(f'{len(weak)} bullets do not start with an action verb (Built, Developed...).')
@@ -368,3 +372,34 @@ def parse_check(pdf_bytes, M):
         ('No broken characters', '\ufffd' not in text and '\u25a0' not in text, ''),
     ]
     return checks, text
+
+
+ACRONYMS = {'sql': 'SQL', 'nlp': 'NLP', 'llm': 'LLM', 'rag': 'RAG', 'eda': 'EDA', 'aws': 'AWS', 'gcp': 'GCP', 'api': 'API', 'etl': 'ETL',
+            'kpi': 'KPI', 'oop': 'OOP', 'cnn': 'CNN', 'rnn': 'RNN', 'lstm': 'LSTM', 'bert': 'BERT', 'gpt': 'GPT', 'css': 'CSS',
+            'html': 'HTML', 'yolo': 'YOLO', 'dax': 'DAX', 'faiss': 'FAISS', 'nosql': 'NoSQL', 'mlops': 'MLOps', 'genai': 'GenAI',
+            'power bi': 'Power BI', 'langchain': 'LangChain', 'fastapi': 'FastAPI', 'pytorch': 'PyTorch', 'tensorflow': 'TensorFlow', 'numpy': 'NumPy', 'mysql': 'MySQL', 'postgresql': 'PostgreSQL', 'mongodb': 'MongoDB', 'opencv': 'OpenCV', 'github': 'GitHub', 'openai': 'OpenAI', 'hugging face': 'Hugging Face', 'xgboost': 'XGBoost', 'lightgbm': 'LightGBM', 'bigquery': 'BigQuery', 'mlflow': 'MLflow', 'nltk': 'NLTK', 'spacy': 'spaCy', 'beautifulsoup': 'BeautifulSoup', 'javascript': 'JavaScript', 'scikit-learn': 'Scikit-learn', 'tf-idf': 'TF-IDF', 'ci/cd': 'CI/CD', 'a/b testing': 'A/B testing'}
+
+
+def display_kw(kw, prof):
+    for item in re.split(r'[,\n:]', prof['p'].get('skills', '')):
+        if item.strip().lower() == kw:
+            return item.strip()
+    return ACRONYMS.get(kw, kw.title())
+
+
+def rule_summary(prof, jd, title=''):
+    """No-AI fallback: a JD-specific lead sentence from skills the candidate really has, plus the base summary."""
+    P = prof['p']
+    jk = jd_keywords(jd)
+    pn = norm(_visible_text(prof, jd))
+    matched = [display_kw(k, prof) for k in jk if has(pn, k)][:6]
+    base = [s.strip() for s in re.split(r'(?<=[.!?])\s+', (P.get('summary') or '').strip()) if s.strip()]
+    while len(' '.join(base).split()) > 140 and len(base) > 2:  # drop the least relevant middle sentence
+        mid = range(1, len(base) - 1)
+        drop = min(mid, key=lambda i: (cnt(base[i], jk), -i))
+        base.pop(drop)
+    role = (title or P.get('title') or '').strip()
+    lead = ''
+    if len(matched) >= 2:
+        lead = f"{role} with skills in {', '.join(matched)}." if role else f"Candidate with skills in {', '.join(matched)}."
+    return ' '.join(x for x in [lead] + base if x)

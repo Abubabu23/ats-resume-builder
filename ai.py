@@ -126,9 +126,9 @@ def ask_json(prompt, secrets):
     raise RuntimeError(f'AI request failed: {last}')
 
 
-def units(prof):
+def units(prof, include_summary=True):
     u = []
-    if prof['p'].get('summary'):
+    if include_summary and prof['p'].get('summary'):
         u.append({'id': 's', 'label': 'Summary', 'text': prof['p']['summary']})
     for k in ('exp', 'intern', 'proj'):
         for i, x in enumerate(prof.get(k, [])):
@@ -148,11 +148,14 @@ def set_unit(prof, uid, text):
     x['pts'] = '\n'.join(lines)
 
 
+GUARD_SKIP = {'reporting', 'analytics', 'dashboard', 'cloud', 'api', 'rest', 'agile', 'kpi', 'oop', 'algorithms', 'data analysis'}
+
+
 def flags(prof, original, suggestion):
     """Skills or numbers in a suggestion that are not already in the profile."""
-    base = full_text(prof)
+    base = full_text(prof) + ' ' + ' '.join(f"{e.get('deg', '')} {e.get('inst', '')} {ds(e)} {e.get('score', '')}" for e in prof.get('edu', []))
     pn, sn = norm(base), norm(suggestion)
-    bad = [k for k in KW if has(sn, k) and not has(pn, k)]
+    bad = [k for k in KW if k not in GUARD_SKIP and has(sn, k) and not has(pn, k)]
     bad += [n for n in re.findall(r'\d+(?:\.\d+)?%?', suggestion) if n not in base]
     return bad
 
@@ -160,7 +163,7 @@ def flags(prof, original, suggestion):
 def facts(prof):
     """Facts the AI may use. Contact details are never included."""
     P = prof['p']
-    L = ['Skills: ' + mask(P.get('skills', ''))]
+    L = ['Skills: ' + mask(P.get('skills', '').replace('\n', '; '))]
     for e in prof.get('edu', []):
         if e.get('deg') and (e.get('inst') or e.get('start') or e.get('end')):
             L.append(f"Education: {e['deg']}, {e.get('inst', '')} ({ds(e)})")
@@ -168,9 +171,11 @@ def facts(prof):
         for x in prof.get(k, []):
             if x.get('co') or x.get('role'):
                 L.append(f"{lab}: {x.get('role', '')} at {x.get('co', '')} ({ds(x)})")
+                L += ['  - ' + mask(b) for b in pts(x.get('pts'))]
     for p in prof.get('proj', []):
         if p.get('name'):
             L.append(f"Project: {p['name']} ({p.get('tech', '')})")
+            L += ['  - ' + mask(b) for b in pts(p.get('pts'))]
     for c in prof.get('cert', []):
         if c.get('name'):
             L.append(f"Certification: {c['name']} {c.get('issuer', '')}")
@@ -179,15 +184,21 @@ def facts(prof):
     return '\n'.join(L)
 
 
-SUMMARY_EXAMPLE = ("ML / GenAI fresher with hands-on experience building end-to-end ML and NLP projects, including a RAG-based "
-                   "LLM chatbot and apps deployed on Streamlit Cloud. Completed B.E. Computer Science while working in AI/CV data "
-                   "quality at a company, including a live production project. Certified in Data Science. "
-                   "Seeking a junior ML / Data Science role. Open to relocating.")
+SUMMARY_EXAMPLE = (
+    "AI/ML Engineer with hands-on experience building GenAI systems: RAG pipelines, LLM integration, NLP model fine-tuning, and "
+    "semantic search using FAISS. B.E. Computer Science graduate (2025) with a Data Science certification. Skilled in Python "
+    "(Pandas, NumPy, Scikit-learn), statistical modelling, and end-to-end ML pipeline development, from data processing to "
+    "deployment via Streamlit. Experienced in translating data insights into business-relevant solutions, from customer support "
+    "automation to BI reporting for stakeholder decision-making. Diploma background in mechanical engineering complements data "
+    "science for industrial and process-data analytics roles. Comfortable working independently and collaborating remotely using "
+    "Git-based workflows and documentation-driven communication. Brings operational discipline and comfort in fast-paced "
+    "environments from prior team leadership experience. Seeking an entry-level AI/ML Engineer role to build and deploy "
+    "production-grade AI/ML solutions that solve real business problems.")
 
 
 def suggest(prof, jd, title, secrets):
     """Returns {unit_id: suggested_text}. Contact details are never included."""
-    items = [{'id': u['id'], 'text': mask(u['text'])} for u in units(prof)]
+    items = [{'id': u['id'], 'text': mask(u['text'])} for u in units(prof, False)]
     prompt = (f"You are an ATS resume editor. Job title: {title}\nJD:\n{mask(jd)}\n\n"
               f"Candidate facts (the ONLY facts you may use):\n{facts(prof)}\n\n"
               "Rewrite each item to be clearer and ATS friendly, using JD wording only for terms the candidate already has. "
@@ -202,6 +213,57 @@ def suggest(prof, jd, title, secrets):
               f"Items:\n{json.dumps(items)}")
     data = ask_json(prompt, secrets)
     out = data.get('items', []) if isinstance(data, dict) else data
-    originals = {u['id']: u['text'] for u in units(prof)}
+    originals = {u['id']: u['text'] for u in units(prof, False)}
     return {o['id']: str(o['text']) for o in out
             if isinstance(o, dict) and o.get('id') in originals and o.get('text') and o['text'] != originals[o['id']]}
+
+
+def tailor_all(prof, jd, title, secrets):
+    """One AI call: JD-specific summary (5-7 sentences) and rewritten bullets for the printed entries.
+    Anything that adds a skill or number not in the profile is dropped. Returns {'summary','bullets','warn'}."""
+    from core import jd_keywords, top_projects
+    top = top_projects(prof, jd)
+    vis = [u for u in units(prof, False) if not u['id'].startswith('proj:') or prof['proj'][int(u['id'].split(':')[1])] in top]
+    items = [{'id': u['id'], 'text': mask(u['text'])} for u in vis]
+    prompt = (f"You are an ATS resume tailor. Job title: {title}\nJD:\n{mask(jd)}\n\n"
+              f"Candidate facts (the ONLY facts you may use):\n{facts(prof)}\n\n"
+              f"Current summary (reference only): {mask(prof['p'].get('summary', ''))}\n\n"
+              "TASK A, summary: write 5 to 7 sentences, 100 to 140 words, tailored to this JD. Order: (1) target-role headline with the "
+              "hands-on systems and tools the JD asks for that the candidate really has; (2) education and certification; (3) skills and "
+              "libraries; (4) experience turning data into business-relevant solutions, anchored in the project and work facts; "
+              "(5) other background that complements the role (for example a diploma); (6) working style grounded in the facts "
+              "(for example Git workflows, team leadership); (7) the job target and, ONLY if a Preference fact exists, relocation. "
+              f"Follow the structure and depth of this example, not its facts: \"{SUMMARY_EXAMPLE}\"\n"
+              f"JD skills to lead with when the candidate has them: {', '.join(jd_keywords(jd)) or 'none detected'}.\n"
+              "TASK B, bullets: rewrite each item below so it highlights what matters for this JD, starts with an action verb, one line, "
+              "under 28 words. Skip items that are already good.\n"
+              "STRICT: never add any skill, tool, number, metric, employer, location or claim that is not in the facts.\n"
+              'Return ONLY JSON: {"summary":"...","items":[{"id":"...","text":"..."}]}\n'
+              f"Items:\n{json.dumps(items)}")
+    data = ask_json(prompt, secrets)
+    data = data if isinstance(data, dict) else {}
+    warn, summary = [], str(data.get('summary', '')).strip() or None
+    if summary:
+        n = len(summary.split())
+        bad = flags(prof, '', summary)
+        if not 80 <= n <= 170:
+            warn.append(f'AI summary had {n} words, so a profile-based summary was used.')
+            summary = None
+        elif bad:
+            warn.append('AI summary added things not in your profile (' + ', '.join(bad[:4]) + '), so a profile-based summary was used.')
+            summary = None
+    originals = {u['id']: u['text'] for u in vis}
+    bullets, dropped = {}, 0
+    for o in data.get('items', []):
+        if not isinstance(o, dict) or o.get('id') not in originals or not o.get('text'):
+            continue
+        t = str(o['text']).strip()
+        if t == originals[o['id']]:
+            continue
+        if len(t.split()) > 45 or flags(prof, originals[o['id']], t):
+            dropped += 1
+            continue
+        bullets[o['id']] = t
+    if dropped:
+        warn.append(f'{dropped} rewritten bullets were rejected because they added skills or numbers not in your profile.')
+    return {'summary': summary, 'bullets': bullets, 'warn': warn}

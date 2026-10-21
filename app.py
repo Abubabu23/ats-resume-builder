@@ -1,5 +1,7 @@
 """ATS Resume Builder - Streamlit app. Paste a JD, get an ATS-friendly one-page resume."""
+import copy
 import datetime as dt
+import hashlib
 import hmac
 import json
 import os
@@ -138,7 +140,7 @@ def sign_out():
 def init_session():
     ss.prof = normalize(store().load_profile(ss.user))
     ss.saved = json.dumps(ss.prof, sort_keys=True)
-    ss.job = {'title': '', 'company': '', 'source': 'LinkedIn', 'jd': ''}
+    ss.job = {'title': '', 'company': '', 'source': 'LinkedIn', 'jd': '', 'summary': '', 'summary_for': '', 'summary_src': '', 'bullets': {}, 'orig': {}}
     ss.sug, ss.limit, ss.msg = {}, None, None
 
 
@@ -272,13 +274,23 @@ def go_resume():
     ss.nav = 'Resume'
 
 
+def jd_changed():
+    ss.job['jd'] = ss.get('jd_box', '')
+    if ss.job['jd'].strip():
+        ss.nav = 'Resume'
+
+
 def page_jd():
     j = ss.job
-    j['jd'] = st.text_area('Job description', j['jd'], height=240, placeholder='Paste the full JD here...')
+    if 'jd_box' not in ss:
+        ss.jd_box = j['jd']
+    st.text_area('Job description', key='jd_box', height=240, placeholder='Paste the full JD here, then click outside the box (or press Ctrl+Enter).', on_change=jd_changed)
+    j['jd'] = ss.jd_box
     a, b = st.columns(2)
     j['title'] = a.text_input('Job title', j['title'])
     j['company'] = b.text_input('Company', j['company'])
     j['source'] = st.selectbox('Job source', SOURCES, SOURCES.index(j['source']))
+    st.caption('When you paste a JD the resume is tailored automatically: summary, skills order, project and experience bullets.')
     st.button('Generate resume', type='primary', on_click=go_resume, width='stretch')
 
 
@@ -305,7 +317,7 @@ def run_ai():
         sug = ai.suggest(ss.prof, j['jd'], j['title'] or ss.prof['p'].get('title', ''), secrets())
         store().inc_usage(ss.user, today())
         ss.used += 1
-        orig = {u['id']: u['text'] for u in ai.units(ss.prof)}
+        orig = {u['id']: u['text'] for u in ai.units(ss.prof, False)}
         ss.sug = {k: {'t': v, 'prev': orig[k], 'applied': False} for k, v in sug.items()}
         ss.limit, ss.msg = None, ('ok', f'{len(sug)} suggestions ready.' if sug else 'Nothing to change. Your bullets already look good.')
     except ai.AILimit as e:
@@ -338,7 +350,7 @@ def page_review():
     if ss.msg:
         getattr(st, {'ok': 'success', 'err': 'error'}[ss.msg[0]])(ss.msg[1])
     st.caption('Left: your current text. Right: AI suggestion. Suggestions with skills or numbers not in your profile are blocked.')
-    for u in ai.units(ss.prof):
+    for u in ai.units(ss.prof, False):
         s = ss.sug.get(u['id'])
         if not s:
             continue
@@ -358,6 +370,60 @@ def page_review():
                 st.button('Apply', key=f"ap_{u['id']}", type='primary', disabled=bool(bad), on_click=apply_sug, args=(u['id'],))
 
 
+# ---------- per-JD tailoring ----------
+SRC = {'ai': 'written by AI for this JD', 'rules': 'built from your profile for this JD', 'base': 'your base summary', 'edited': 'edited by you'}
+
+
+def sum_key():
+    return hashlib.md5(f"{ss.job['jd']}|{core.full_text(ss.prof)}".encode()).hexdigest()
+
+
+def tailor_now(use_ai=True):
+    """Tailors summary + bullets for the current JD. Your saved profile is never changed."""
+    j, prof = ss.job, ss.prof
+    text, bullets, src, notes = None, {}, 'rules', []
+    if use_ai and used() >= daily_limit():
+        notes.append('AI limit finished for today, so the summary was built without AI.')
+    elif use_ai:
+        try:
+            r = ai.tailor_all(prof, j['jd'], j['title'] or prof['p'].get('title', ''), secrets())
+            store().inc_usage(ss.user, today())
+            ss.used += 1
+            text, bullets, src, notes = r['summary'], r['bullets'], 'ai', r['warn']
+        except ai.AILimit as e:
+            ss.limit = {'until': dt.datetime.now(IST) + dt.timedelta(seconds=e.seconds) if e.seconds else None}
+            notes.append('AI limit is finished for now, so the summary was built without AI.')
+        except Exception as e:
+            notes.append(f'AI was not used ({str(e)[:90]}). Built from your profile instead.')
+    if not text:
+        text = core.rule_summary(prof, j['jd'], j['title'])
+        src = 'rules' if src != 'ai' else 'ai'
+    j.update(summary=text, summary_for=sum_key(), summary_src=src, bullets=bullets,
+             orig={u['id']: u['text'] for u in ai.units(prof, False)})
+    ss.sum_box, ss.sum_note, ss.sum_last = text, ' '.join(notes), text
+
+
+def use_base_summary():
+    base = ss.prof['p'].get('summary', '')
+    ss.job.update(summary=base, summary_for=sum_key(), summary_src='base')
+    ss.sum_box, ss.sum_note, ss.sum_last = base, '', base
+
+
+def use_original_bullets():
+    ss.job['bullets'] = {}
+
+
+def eff_prof():
+    """Profile with this JD's rewritten bullets applied (a copy, the saved profile stays as it is)."""
+    j = ss.job
+    if not j['jd'].strip() or j.get('summary_for') != sum_key() or not j.get('bullets'):
+        return ss.prof
+    tp = copy.deepcopy(ss.prof)
+    for uid, t in j['bullets'].items():
+        ai.set_unit(tp, uid, t)
+    return tp
+
+
 # ---------- resume ----------
 def preview(pdf):
     try:
@@ -375,13 +441,39 @@ def page_resume():
     j, prof = ss.job, ss.prof
     if not j['jd'].strip():
         st.info('Paste a JD in the JD tab to tailor the resume. Showing your base resume.')
+    has_jd = bool(j['jd'].strip())
+    if has_jd and j.get('summary_for') != sum_key():
+        with st.spinner('Tailoring your summary for this JD...'):
+            tailor_now()
     left, right = st.columns([5, 6], gap='large')
+    summ = None
     with left:
+        if has_jd:
+            with st.expander(f"Summary for this JD: {SRC.get(j['summary_src'], '')}", expanded=True):
+                if ss.get('sum_note'):
+                    st.warning(ss.sum_note)
+                if 'sum_box' not in ss:
+                    ss.sum_box = j['summary']
+                j['summary'] = st.text_area('You can edit it', key='sum_box', height=190)
+                if j['summary_src'] != 'edited' and j['summary'] != ss.get('sum_last', j['summary']):
+                    j['summary_src'] = 'edited'
+                ss.sum_last = j['summary']
+                b1, b2 = st.columns(2)
+                b1.button('Rewrite with AI', on_click=tailor_now, width='stretch', help='Re-tailors summary and bullets (uses 1 AI call)')
+                b2.button('Use my base summary', on_click=use_base_summary, width='stretch')
+            summ = j['summary']
+            if j.get('bullets'):
+                with st.expander(f"{len(j['bullets'])} bullets rewritten for this JD"):
+                    for uid, t in j['bullets'].items():
+                        st.caption('Before: ' + j['orig'].get(uid, ''))
+                        st.write('After: ' + t)
+                    st.button('Use my original bullets', on_click=use_original_bullets, width='stretch')
         c1, c2 = st.columns(2)
         tp = c1.selectbox('Template', ['classic', 'modern', 'compact'], format_func=str.title)
         safe = c2.toggle('Single-line dates', False, help='Extra ATS-safe: date and location go on the college / company line.')
-        A = core.ats(prof, j['jd'])
-        F = core.fit_one_page(core.build_model(prof, j['jd'], safe), tp)
+        tprof = eff_prof()
+        A = core.ats(tprof, j['jd'], summ)
+        F = core.fit_one_page(core.build_model(tprof, j['jd'], safe, summ), tp)
         st.markdown(ring(A['total']) if A['kws'] else '<div class="ringbox"><div><b>ATS score</b><small>Paste a JD to see it</small></div></div>', unsafe_allow_html=True)
         st.markdown(stats([('Keywords matched', f"{len(A['matched'])} of {len(A['kws'])}"), ('Length', '1 page' if not F['over'] else 'Over 1 page'),
                            ('Font', f"{F['z']:.1f} pt"), ('Dates', 'Single line' if safe else 'Right-aligned')]), unsafe_allow_html=True)
@@ -476,8 +568,10 @@ st.markdown(f'''<div class="hero"><div><b>📄 ATS Resume Builder</b><span>Paste
 <div class="pill">✨ AI {used()} of {daily_limit()} today</div></div>''', unsafe_allow_html=True)
 nav_col, out_col = st.columns([5, 1], vertical_alignment='center')
 sync_skills(ss.prof)
+if 'nav' not in ss:
+    ss.nav = 'Resume'
 with nav_col:
-    page = st.segmented_control('Navigation', list(ICONS), default='Resume', key='nav', format_func=lambda x: f'{ICONS[x]} {x}', label_visibility='collapsed') or 'Resume'
+    page = st.segmented_control('Navigation', list(ICONS), key='nav', format_func=lambda x: f'{ICONS[x]} {x}', label_visibility='collapsed') or 'Resume'
 out_col.button('Sign out', on_click=sign_out, icon=':material/logout:', width='stretch', key='signout_top')
 {'Profile': page_profile, 'JD': page_jd, 'Review': page_review, 'Resume': page_resume, 'History': page_history}[page]()
 
